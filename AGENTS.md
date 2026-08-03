@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -117,7 +117,7 @@ In `Package.swift`, line 5:
 let useLocalFramework = true  // Change to false before committing
 ```
 
-**IMPORTANT**: 
+**IMPORTANT**:
 - Set to `true` when developing locally (uses `./build/libxlsxwriter-rs.xcframework`)
 - Set to `false` before committing (uses GitHub release binary)
 - Run `./build-ios.sh` first when `useLocalFramework = true`
