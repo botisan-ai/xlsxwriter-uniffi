@@ -71,7 +71,7 @@ src/lib.rs — shared Rust Workbook API
 └── Android Gradle build
     ├── host release library ────────────> UniFFI internal Kotlin/JNA bindings
     ├── cargo-ndk ───────────────────────> arm64-v8a + x86_64 `.so` libraries
-    └── public Kotlin façade + both above ─> AAR / Maven repository
+    └── public façade + generated Kotlin + Android `.so` ─> AAR / Maven repository
 ```
 
 ### Shared Rust Core
