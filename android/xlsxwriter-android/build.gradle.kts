@@ -40,11 +40,7 @@ val buildRustAndroid by tasks.registering(Exec::class) {
         "--target",
         "arm64-v8a",
         "--target",
-        "armeabi-v7a",
-        "--target",
         "x86_64",
-        "--target",
-        "x86",
         "--output-dir",
         generatedJniLibraries.get().asFile.absolutePath,
         "build",
@@ -94,6 +90,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -133,12 +130,15 @@ ktlint {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.annotation:annotation:1.9.1")
-    implementation("net.java.dev.jna:jna:5.18.1@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("javax.xml.stream:stax-api:1.0-2")
+    androidTestImplementation("org.dhatim:fastexcel-reader:0.20.2")
 }
 
 tasks.named("preBuild") {
@@ -202,16 +202,37 @@ tasks.register<Zip>("generateReleaseRepository") {
     dependsOn("publishReleasePublicationToReleaseRepository")
     from(rootProject.layout.buildDirectory.dir("repository"))
     into("xlsxwriter-android-${project.version}")
-    archiveFileName.set("xlsxwriter-android-${project.version}.zip")
+    archiveFileName.set("xlsxwriter-android-${project.version}-maven.zip")
     destinationDirectory.set(rootProject.layout.buildDirectory.dir("distributions"))
 }
 
-tasks.register<Exec>("generateReleaseChecksum") {
+tasks.register<Copy>("generateReleaseAar") {
     group = "publishing"
-    description = "Generates the SHA-256 sidecar for the Maven repository ZIP."
-    dependsOn("generateReleaseRepository")
-    val archive = rootProject.layout.buildDirectory.file("distributions/xlsxwriter-android-${project.version}.zip")
-    inputs.file(archive)
-    outputs.file(archive.map { file -> file.asFile.parentFile.resolve("${file.asFile.name}.sha256") })
-    commandLine(rootProject.file("checksum-release.sh").absolutePath, archive.get().asFile.absolutePath)
+    description = "Copies the published AAR into the GitHub Release distribution directory."
+    dependsOn("publishReleasePublicationToReleaseRepository")
+    from(
+        rootProject.layout.buildDirectory.file(
+            "repository/ai/botisan/xlsxwriter-android/${project.version}/xlsxwriter-android-${project.version}.aar",
+        ),
+    )
+    into(rootProject.layout.buildDirectory.dir("distributions"))
+}
+
+tasks.register<Exec>("generateReleaseChecksums") {
+    group = "publishing"
+    description = "Generates SHA-256 sidecars for the Android release artifacts."
+    dependsOn("generateReleaseRepository", "generateReleaseAar")
+    val releaseDirectory = rootProject.layout.buildDirectory.dir("distributions")
+    val mavenArchive = releaseDirectory.map { it.file("xlsxwriter-android-${project.version}-maven.zip") }
+    val aar = releaseDirectory.map { it.file("xlsxwriter-android-${project.version}.aar") }
+    inputs.files(mavenArchive, aar)
+    outputs.files(
+        mavenArchive.map { file -> file.asFile.parentFile.resolve("${file.asFile.name}.sha256") },
+        aar.map { file -> file.asFile.parentFile.resolve("${file.asFile.name}.sha256") },
+    )
+    commandLine(
+        rootProject.file("checksum-release.sh").absolutePath,
+        mavenArchive.get().asFile.absolutePath,
+        aar.get().asFile.absolutePath,
+    )
 }

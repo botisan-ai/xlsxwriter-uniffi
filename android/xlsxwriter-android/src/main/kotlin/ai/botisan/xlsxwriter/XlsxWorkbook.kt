@@ -1,70 +1,19 @@
 package ai.botisan.xlsxwriter
 
 import java.io.File
+import java.time.LocalDate
 import ai.botisan.xlsxwriter.internal.ExcelDate as NativeExcelDate
-import ai.botisan.xlsxwriter.internal.ExcelDateTime as NativeExcelDateTime
 import ai.botisan.xlsxwriter.internal.Workbook as NativeWorkbook
 import ai.botisan.xlsxwriter.internal.XlsxWriterException as NativeXlsxWriterException
 
 private const val MAX_ROW_INDEX = 1_048_575
 private const val MAX_COLUMN_INDEX = 16_383
 
-/** A civil date written as an Excel date cell without timezone conversion. */
-public data class ExcelDate(
-    val year: Int,
-    val month: Int,
-    val day: Int,
-) {
-    init {
-        require(year in 1900..9999) { "year must be between 1900 and 9999" }
-        require(month in 1..12) { "month must be between 1 and 12" }
-        require(day in 1..31) { "day must be between 1 and 31" }
-    }
-
-    internal fun toNative(): NativeExcelDate =
-        NativeExcelDate(
-            year = year.toUShort(),
-            month = month.toUByte(),
-            day = day.toUByte(),
-        )
-}
-
-/** A civil date and time written without timezone conversion. */
-public data class ExcelDateTime(
-    val year: Int,
-    val month: Int,
-    val day: Int,
-    val hour: Int,
-    val minute: Int,
-    val second: Int,
-) {
-    init {
-        ExcelDate(year, month, day)
-        require(hour in 0..23) { "hour must be between 0 and 23" }
-        require(minute in 0..59) { "minute must be between 0 and 59" }
-        require(second in 0..59) { "second must be between 0 and 59" }
-    }
-
-    internal fun toNative(): NativeExcelDateTime =
-        NativeExcelDateTime(
-            year = year.toUShort(),
-            month = month.toUByte(),
-            day = day.toUByte(),
-            hour = hour.toUByte(),
-            minute = minute.toUByte(),
-            second = second.toUByte(),
-        )
-}
-
 /** A worksheet owned by the workbook that created it. */
 public class Worksheet internal constructor(
     internal val nativeIndex: UInt,
     internal val owner: Any,
-) {
-    val index: Int = nativeIndex.toInt()
-
-    override fun toString(): String = "Worksheet(index=$index)"
-}
+)
 
 /** Stable Kotlin error surface for failures reported by the Rust writer. */
 public sealed class XlsxWriterException(
@@ -124,11 +73,6 @@ public class XlsxWorkbook private constructor(
 
     constructor() : this(NativeWorkbook())
 
-    fun addWorksheet(): Worksheet =
-        nativeCall {
-            Worksheet(native.addWorksheet(), owner)
-        }
-
     fun addWorksheet(name: String): Worksheet =
         nativeCall {
             Worksheet(native.addWorksheetWithName(name), owner)
@@ -167,53 +111,23 @@ public class XlsxWorkbook private constructor(
         }
     }
 
-    fun writeBoolean(
-        sheet: Worksheet,
-        row: Int,
-        column: Int,
-        value: Boolean,
-    ) {
-        nativeCall {
-            native.writeBoolean(sheetIndex(sheet), row.toNativeRow(), column.toNativeColumn(), value)
-        }
-    }
-
+    /** Writes a [LocalDate] without applying any timezone conversion. */
     fun writeDate(
         sheet: Worksheet,
         row: Int,
         column: Int,
-        value: ExcelDate,
+        value: LocalDate,
     ) {
         nativeCall {
-            native.writeDate(sheetIndex(sheet), row.toNativeRow(), column.toNativeColumn(), value.toNative())
-        }
-    }
-
-    fun writeDateTime(
-        sheet: Worksheet,
-        row: Int,
-        column: Int,
-        value: ExcelDateTime,
-    ) {
-        nativeCall {
-            native.writeDatetime(sheetIndex(sheet), row.toNativeRow(), column.toNativeColumn(), value.toNative())
-        }
-    }
-
-    fun writeDate(
-        sheet: Worksheet,
-        row: Int,
-        column: Int,
-        value: ExcelDate,
-        format: String,
-    ) {
-        nativeCall {
-            native.writeDateWithFormat(
+            native.writeDate(
                 sheetIndex(sheet),
                 row.toNativeRow(),
                 column.toNativeColumn(),
-                value.toNative(),
-                format,
+                NativeExcelDate(
+                    year = value.year.toUShort(),
+                    month = value.monthValue.toUByte(),
+                    day = value.dayOfMonth.toUByte(),
+                ),
             )
         }
     }
@@ -227,19 +141,6 @@ public class XlsxWorkbook private constructor(
             native.setColumnWidth(sheetIndex(sheet), column.toNativeColumn(), width)
         }
     }
-
-    fun setRowHeight(
-        sheet: Worksheet,
-        row: Int,
-        height: Double,
-    ) {
-        nativeCall {
-            native.setRowHeight(sheetIndex(sheet), row.toNativeRow(), height)
-        }
-    }
-
-    val worksheetCount: Int
-        get() = native.worksheetCount().toInt()
 
     fun save(file: File) {
         nativeCall { native.save(file.absolutePath) }

@@ -5,12 +5,11 @@ Swift and Kotlin/Android wrappers for [rust_xlsxwriter](https://github.com/jmcna
 ## Features
 
 - Create Excel 2007+ (.xlsx) files from iOS, macOS, and Android apps
-- Write strings, numbers, booleans, dates, and datetimes to cells
-- Multiple worksheet support with custom naming
-- Column width and row height control
-- Save to file or in-memory buffer
+- Write strings, integers, numbers, and dates to named worksheets on both platforms
+- Set column widths and save to a file or in-memory buffer
 - Swift `actor` isolation and an Android `AutoCloseable` API
-- Native Foundation `Date` support on Swift and civil-date values on Android
+- Native Foundation `Date` support on Swift and `LocalDate` support on Android
+- Additional Swift APIs for booleans, datetimes, row heights, and custom date formats
 
 ## Installation
 
@@ -28,11 +27,11 @@ Or add it via Xcode: File → Add Package Dependencies → Enter the repository 
 
 ### Android
 
-Android releases are distributed as a zipped folder-based Maven repository. Download the `xlsxwriter-android-<version>.zip` asset and its `.sha256` sidecar from the matching GitHub Release, verify the checksum, then extract it into your project—for example, `third_party/xlsxwriter`.
+Android releases are distributed as a zipped folder-based Maven repository. Download the `xlsxwriter-android-<version>-maven.zip` asset and its `.sha256` sidecar from the matching GitHub Release, verify the checksum, then extract it into your project—for example, `third_party/xlsxwriter`.
 
 ```sh
 cd <download-directory>
-shasum -a 256 -c xlsxwriter-android-0.2.0.zip.sha256
+shasum -a 256 -c xlsxwriter-android-0.2.0-maven.zip.sha256
 ```
 
 Point Gradle at the extracted repository:
@@ -55,7 +54,16 @@ Add the normal Maven coordinate. JNA is resolved transitively as an Android AAR:
 ```kotlin
 // app/build.gradle.kts
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("ai.botisan:xlsxwriter-android:0.2.0")
+}
+```
+
+Enable core-library desugaring in the app's `android.compileOptions` so `LocalDate` works on API 24 and 25:
+
+```kotlin
+compileOptions {
+    isCoreLibraryDesugaringEnabled = true
 }
 ```
 
@@ -177,21 +185,24 @@ print("Generated \(data.count) bytes")
 The Kotlin façade uses ordinary `Int`, `Long`, `Double`, and `File` types. It hides the generated UniFFI API, unsigned indices, JNA, and native handles.
 
 ```kotlin
-import ai.botisan.xlsxwriter.ExcelDate
 import ai.botisan.xlsxwriter.XlsxWorkbook
+import java.time.LocalDate
 
-XlsxWorkbook().use { workbook ->
+val workbookBytes = XlsxWorkbook().use { workbook ->
     val receipts = workbook.addWorksheet("Receipts")
     workbook.writeString(receipts, row = 0, column = 0, value = "Merchant")
     workbook.writeInteger(receipts, row = 1, column = 0, value = 1)
     workbook.writeNumber(receipts, row = 1, column = 1, value = 12.34)
-    workbook.writeDate(receipts, row = 1, column = 2, value = ExcelDate(2026, 8, 3))
+    workbook.writeDate(receipts, row = 1, column = 2, value = LocalDate.of(2026, 8, 3))
     workbook.setColumnWidth(receipts, column = 0, width = 18.0)
-    workbook.save(outputFile)
+    workbook.saveToByteArray()
+}
+requireNotNull(contentResolver.openOutputStream(outputUri)).use { output ->
+    output.write(workbookBytes)
 }
 ```
 
-Calls are synchronous. Write larger workbooks on an IO dispatcher or another background thread. `save(File)` requires a writable filesystem path, so copy any `content://` destination through Android's content resolver separately.
+Calls are synchronous. Write larger workbooks on an IO dispatcher or another background thread. `saveToByteArray()` is the direct path for a `content://` destination; `save(File)` is also available for a writable filesystem path. The package ships `arm64-v8a` and `x86_64` native libraries.
 
 ## Swift API Reference
 
@@ -250,8 +261,8 @@ swift test
 # Run the Kotlin/native round-trip on a connected emulator or device
 ./android/gradlew -p android :xlsxwriter-android:connectedDebugAndroidTest
 
-# Produce the Maven repository ZIP and SHA-256 sidecar
-./android/gradlew -p android :xlsxwriter-android:generateReleaseChecksum
+# Produce the Maven repository ZIP, standalone AAR, and SHA-256 sidecars
+./android/gradlew -p android :xlsxwriter-android:generateReleaseChecksums
 ```
 
 ### Project Structure

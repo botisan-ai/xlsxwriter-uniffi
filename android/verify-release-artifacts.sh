@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-if [[ "$#" -ne 5 ]]; then
-  echo "Usage: $0 <maven-repository> <version> <consumer-apk> <release-zip> <checksum>" >&2
+if [[ "$#" -ne 7 ]]; then
+  echo "Usage: $0 <maven-repository> <version> <consumer-apk> <release-zip> <zip-checksum> <release-aar> <aar-checksum>" >&2
   exit 2
 fi
 
@@ -11,28 +11,45 @@ maven_repository="$1"
 version="$2"
 consumer_apk="$3"
 release_zip="$4"
-release_checksum="$5"
+release_zip_checksum="$5"
+release_aar="$6"
+release_aar_checksum="$7"
 module_directory="${maven_repository}/ai/botisan/xlsxwriter-android/${version}"
 aar="${module_directory}/xlsxwriter-android-${version}.aar"
 pom="${module_directory}/xlsxwriter-android-${version}.pom"
 module_metadata="${module_directory}/xlsxwriter-android-${version}.module"
 
-for artifact in "$aar" "$pom" "$module_metadata" "$consumer_apk" "$release_zip" "$release_checksum"; do
+for artifact in "$aar" "$pom" "$module_metadata" "$consumer_apk" "$release_zip" "$release_zip_checksum" "$release_aar" "$release_aar_checksum"; do
   if [[ ! -f "$artifact" ]]; then
     echo "Missing release artifact: $artifact" >&2
     exit 1
   fi
 done
 
-expected_checksum=$(awk '{ print $1 }' "$release_checksum")
-if command -v sha256sum >/dev/null 2>&1; then
-  actual_checksum=$(sha256sum "$release_zip" | awk '{ print $1 }')
-else
-  actual_checksum=$(shasum -a 256 "$release_zip" | awk '{ print $1 }')
-fi
+verify_checksum() {
+  local artifact="$1"
+  local checksum_file="$2"
+  local expected_checksum
+  local actual_checksum
 
-if [[ "$actual_checksum" != "$expected_checksum" ]]; then
-  echo "Release ZIP checksum does not match its sidecar" >&2
+  expected_checksum=$(awk '{ print $1 }' "$checksum_file")
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_checksum=$(sha256sum "$artifact" | awk '{ print $1 }')
+  else
+    actual_checksum=$(shasum -a 256 "$artifact" | awk '{ print $1 }')
+  fi
+
+  if [[ "$actual_checksum" != "$expected_checksum" ]]; then
+    echo "$(basename "$artifact") checksum does not match its sidecar" >&2
+    exit 1
+  fi
+}
+
+verify_checksum "$release_zip" "$release_zip_checksum"
+verify_checksum "$release_aar" "$release_aar_checksum"
+
+if ! cmp -s "$aar" "$release_aar"; then
+  echo "Standalone release AAR differs from the Maven repository AAR" >&2
   exit 1
 fi
 
@@ -42,8 +59,8 @@ jna_dependency=$(awk '
   /<\/dependency>/ && block ~ /<artifactId>jna<\/artifactId>/ { print block }
 ' "$pom")
 
-if [[ "$jna_dependency" != *"<type>aar</type>"* ]]; then
-  echo "Published POM does not retain JNA as an AAR dependency" >&2
+if [[ "$jna_dependency" != *"<version>5.19.1</version>"* || "$jna_dependency" != *"<type>aar</type>"* ]]; then
+  echo "Published POM does not retain JNA 5.19.1 as an AAR dependency" >&2
   exit 1
 fi
 
@@ -61,7 +78,14 @@ trap cleanup EXIT
 mkdir -p "$temporary_directory/aar"
 unzip -q "$aar" -d "$temporary_directory/aar"
 
-abis=(arm64-v8a armeabi-v7a x86 x86_64)
+abis=(arm64-v8a x86_64)
+actual_abis=$(find "$temporary_directory/aar/jni" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+expected_abis=$(printf '%s\n' "${abis[@]}" | sort)
+if [[ "$actual_abis" != "$expected_abis" ]]; then
+  echo "AAR ABIs differ from the supported 64-bit set" >&2
+  exit 1
+fi
+
 for abi in "${abis[@]}"; do
   library="$temporary_directory/aar/jni/$abi/libxlsxwriter.so"
   if [[ ! -f "$library" ]]; then
@@ -90,7 +114,7 @@ if [[ -z "$readelf" ]]; then
   exit 1
 fi
 
-for abi in arm64-v8a x86_64; do
+for abi in "${abis[@]}"; do
   library="$temporary_directory/aar/jni/$abi/libxlsxwriter.so"
   while read -r alignment; do
     if (( alignment < 0x4000 )); then
@@ -112,9 +136,15 @@ for abi in "${abis[@]}"; do
   fi
 done
 
+apk_xlsxwriter_abis=$(sed -nE 's#^lib/([^/]+)/libxlsxwriter\.so$#\1#p' "$temporary_directory/apk-entries.txt" | sort)
+if [[ "$apk_xlsxwriter_abis" != "$expected_abis" ]]; then
+  echo "Consumer APK ABIs differ from the supported 64-bit set" >&2
+  exit 1
+fi
+
 mkdir -p "$temporary_directory/apk"
 unzip -q "$consumer_apk" -d "$temporary_directory/apk"
-for abi in arm64-v8a x86_64; do
+for abi in "${abis[@]}"; do
   for library_name in libxlsxwriter.so libjnidispatch.so; do
     library="$temporary_directory/apk/lib/$abi/$library_name"
     while read -r alignment; do
@@ -141,4 +171,4 @@ if [[ -z "$zipalign" ]]; then
 fi
 
 "$zipalign" -c -P 16 4 "$consumer_apk" >/dev/null
-echo "Verified Maven metadata, checksum, four ABIs, 16 KiB ELF alignment, and consumer APK alignment."
+echo "Verified Maven metadata, release checksums, two 64-bit ABIs, 16 KiB ELF alignment, and consumer APK alignment."

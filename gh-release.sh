@@ -24,10 +24,12 @@ if [ "$swift_release_tag" != "$version" ]; then
   exit 1
 fi
 
-ANDROID_ZIP="${ANDROID_DISTRIBUTIONS_DIR}/xlsxwriter-android-${version}.zip"
-ANDROID_CHECKSUM="${ANDROID_ZIP}.sha256"
+ANDROID_ZIP="${ANDROID_DISTRIBUTIONS_DIR}/xlsxwriter-android-${version}-maven.zip"
+ANDROID_ZIP_CHECKSUM="${ANDROID_ZIP}.sha256"
+ANDROID_AAR="${ANDROID_DISTRIBUTIONS_DIR}/xlsxwriter-android-${version}.aar"
+ANDROID_AAR_CHECKSUM="${ANDROID_AAR}.sha256"
 
-for artifact in "$XCFRAMEWORK_ZIP" "$ANDROID_ZIP" "$ANDROID_CHECKSUM"; do
+for artifact in "$XCFRAMEWORK_ZIP" "$ANDROID_ZIP" "$ANDROID_ZIP_CHECKSUM" "$ANDROID_AAR" "$ANDROID_AAR_CHECKSUM"; do
   if [ ! -f "$artifact" ]; then
     echo "Missing release artifact: $artifact" >&2
     exit 1
@@ -35,4 +37,4 @@ for artifact in "$XCFRAMEWORK_ZIP" "$ANDROID_ZIP" "$ANDROID_CHECKSUM"; do
 done
 
 gh release create "$version" --generate-notes
-gh release upload "$version" "$XCFRAMEWORK_ZIP" "$ANDROID_ZIP" "$ANDROID_CHECKSUM" --clobber
+gh release upload "$version" "$XCFRAMEWORK_ZIP" "$ANDROID_ZIP" "$ANDROID_ZIP_CHECKSUM" "$ANDROID_AAR" "$ANDROID_AAR_CHECKSUM" --clobber
