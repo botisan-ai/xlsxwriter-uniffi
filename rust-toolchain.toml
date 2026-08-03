@@ -7,5 +7,9 @@ targets = [
 
     # macOS
     "aarch64-apple-darwin",
+
+    # Android
+    "aarch64-linux-android",
+    "x86_64-linux-android",
 ]
 components = ["clippy", "rustfmt"]
