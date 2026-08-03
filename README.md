@@ -19,7 +19,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/botisan-ai/XlsxWriter.swift.git", from: "0.1.3")
+    .package(url: "https://github.com/botisan-ai/xlsxwriter-uniffi.git", from: "0.1.3")
 ]
 ```
 
@@ -268,7 +268,7 @@ swift test
 ### Project Structure
 
 ```
-XlsxWriter.swift/
+xlsxwriter-uniffi/
 ├── src/
 │   ├── lib.rs              # Rust FFI implementation
 │   └── uniffi-bindgen.rs   # UniFFI code generator

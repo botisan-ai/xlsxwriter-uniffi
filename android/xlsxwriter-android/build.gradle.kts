@@ -171,7 +171,7 @@ afterEvaluate {
                 pom {
                     name.set("XlsxWriter Android")
                     description.set("Kotlin and UniFFI bindings for the Rust xlsxwriter core.")
-                    url.set("https://github.com/botisan-ai/XlsxWriter.swift")
+                    url.set("https://github.com/botisan-ai/xlsxwriter-uniffi")
                     licenses {
                         license {
                             name.set("MIT License")
@@ -179,9 +179,9 @@ afterEvaluate {
                         }
                     }
                     scm {
-                        connection.set("scm:git:git://github.com/botisan-ai/XlsxWriter.swift.git")
-                        developerConnection.set("scm:git:ssh://github.com/botisan-ai/XlsxWriter.swift.git")
-                        url.set("https://github.com/botisan-ai/XlsxWriter.swift")
+                        connection.set("scm:git:git://github.com/botisan-ai/xlsxwriter-uniffi.git")
+                        developerConnection.set("scm:git:ssh://github.com/botisan-ai/xlsxwriter-uniffi.git")
+                        url.set("https://github.com/botisan-ai/xlsxwriter-uniffi")
                     }
                 }
             }
