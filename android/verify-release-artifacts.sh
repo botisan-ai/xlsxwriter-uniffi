@@ -60,8 +60,8 @@ jna_dependency=$(awk '
   /<\/dependency>/ && block ~ /<artifactId>jna<\/artifactId>/ { print block }
 ' "$pom")
 
-if [[ "$jna_dependency" != *"<version>5.19.1</version>"* || "$jna_dependency" != *"<type>aar</type>"* ]]; then
-  echo "Published POM does not retain JNA 5.19.1 as an AAR dependency" >&2
+if [[ "$jna_dependency" != *"<version>5.19.1</version>"* || "$jna_dependency" != *"<type>aar</type>"* || "$jna_dependency" != *"<scope>compile</scope>"* ]]; then
+  echo "Published POM does not retain JNA 5.19.1 as a compile-scope AAR dependency" >&2
   exit 1
 fi
 

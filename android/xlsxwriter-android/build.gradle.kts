@@ -13,7 +13,9 @@ version = rootProject.extra["xlsxWriterVersion"] as String
 val rustRoot = rootProject.layout.projectDirectory.dir("..")
 val generatedBindings = layout.buildDirectory.dir("generated/source/uniffi")
 val generatedJniLibraries = layout.buildDirectory.dir("generated/jniLibs")
-val bindingLibrary = generatedJniLibraries.map { it.file("arm64-v8a/libxlsxwriter.so") }
+val hostLibraryName =
+    if (System.getProperty("os.name").startsWith("Mac")) "libxlsxwriter.dylib" else "libxlsxwriter.so"
+val hostLibrary = rustRoot.file("target/release/$hostLibraryName")
 val rustInputs =
     files(
         rustRoot.file("Cargo.toml"),
@@ -22,6 +24,17 @@ val rustInputs =
         rustRoot.file("uniffi.toml"),
         fileTree(rustRoot.dir("src")) { include("**/*.rs") },
     )
+
+// UniFFI needs the symbol table that Android release builds may strip, so binding
+// generation uses a host library. The same library supports host-JVM unit tests.
+val buildRustHost by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Builds the host Rust library for bindings and JVM tests."
+    inputs.files(rustInputs)
+    outputs.file(hostLibrary)
+    workingDir(rustRoot)
+    commandLine("cargo", "build", "--release", "--locked", "--lib")
+}
 
 val buildRustAndroid by tasks.registering(Exec::class) {
     group = "rust"
@@ -52,9 +65,9 @@ val buildRustAndroid by tasks.registering(Exec::class) {
 
 val generateUniFfiBindings by tasks.registering(Exec::class) {
     group = "rust"
-    description = "Generates Kotlin bindings from the Android Rust library."
-    dependsOn(buildRustAndroid)
-    inputs.file(bindingLibrary)
+    description = "Generates Kotlin bindings from the host Rust library."
+    dependsOn(buildRustHost)
+    inputs.file(hostLibrary)
     inputs.file(rustRoot.file("uniffi.toml"))
     outputs.dir(generatedBindings)
     workingDir(rustRoot)
@@ -70,7 +83,7 @@ val generateUniFfiBindings by tasks.registering(Exec::class) {
         "--",
         "generate",
         "--library",
-        bindingLibrary.get().asFile.absolutePath,
+        hostLibrary.asFile.absolutePath,
         "--language",
         "kotlin",
         "--out-dir",
@@ -132,7 +145,10 @@ ktlint {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.annotation:annotation:1.9.1")
-    implementation("net.java.dev.jna:jna:5.19.1@aar")
+    api("net.java.dev.jna:jna:5.19.1@aar")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("net.java.dev.jna:jna:5.19.1")
 
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
@@ -147,6 +163,11 @@ tasks.named("preBuild") {
 
 tasks.matching { it.name.endsWith("SourcesJar") }.configureEach {
     dependsOn(generateUniFfiBindings)
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(buildRustHost)
+    systemProperty("jna.library.path", hostLibrary.asFile.parentFile.absolutePath)
 }
 
 tasks.matching { it.name == "publishReleasePublicationToReleaseRepository" }.configureEach {
