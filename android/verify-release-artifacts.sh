@@ -65,7 +65,7 @@ if [[ "$jna_dependency" != *"<version>5.19.1</version>"* || "$jna_dependency" !=
   exit 1
 fi
 
-if ! rg -q '"module": "jna"' "$module_metadata"; then
+if ! grep -Fq '"module": "jna"' "$module_metadata"; then
   echo "Gradle Module Metadata does not include JNA" >&2
   exit 1
 fi
@@ -141,11 +141,11 @@ done
 
 unzip -Z1 "$consumer_apk" > "$temporary_directory/apk-entries.txt"
 for abi in "${abis[@]}"; do
-  if ! rg -qx "lib/$abi/libxlsxwriter.so" "$temporary_directory/apk-entries.txt"; then
+  if ! grep -Fqx "lib/$abi/libxlsxwriter.so" "$temporary_directory/apk-entries.txt"; then
     echo "Consumer APK is missing $abi/libxlsxwriter.so" >&2
     exit 1
   fi
-  if ! rg -qx "lib/$abi/libjnidispatch.so" "$temporary_directory/apk-entries.txt"; then
+  if ! grep -Fqx "lib/$abi/libjnidispatch.so" "$temporary_directory/apk-entries.txt"; then
     echo "Consumer APK is missing transitive JNA for $abi" >&2
     exit 1
   fi
