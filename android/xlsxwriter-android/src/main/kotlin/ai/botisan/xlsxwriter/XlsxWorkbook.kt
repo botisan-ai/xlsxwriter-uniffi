@@ -118,6 +118,9 @@ public class XlsxWorkbook private constructor(
         column: Int,
         value: LocalDate,
     ) {
+        require(value.year in 0..UShort.MAX_VALUE.toInt()) {
+            "date year must be between 0 and ${UShort.MAX_VALUE}"
+        }
         nativeCall {
             native.writeDate(
                 sheetIndex(sheet),
