@@ -1,0 +1,145 @@
+import org.gradle.api.tasks.Exec
+
+plugins {
+    id("com.android.library")
+    id("org.jlleitschuh.gradle.ktlint")
+    `maven-publish`
+}
+
+group = "ai.botisan"
+version =
+    rootProject
+        .file("../Cargo.toml")
+        .readLines()
+        .first { it.trimStart().startsWith("version =") }
+        .substringAfter('"')
+        .substringBefore('"')
+
+val rustRoot = rootProject.layout.projectDirectory.dir("..")
+val generatedBindings = layout.buildDirectory.dir("generated/source/uniffi")
+val generatedJniLibraries = layout.buildDirectory.dir("generated/jniLibs")
+val bindingLibrary = generatedJniLibraries.map { it.file("arm64-v8a/libxlsxwriter.so") }
+val rustInputs =
+    files(
+        rustRoot.file("Cargo.toml"),
+        rustRoot.file("Cargo.lock"),
+        rustRoot.file("rust-toolchain.toml"),
+        rustRoot.file("uniffi.toml"),
+        fileTree(rustRoot.dir("src")) { include("**/*.rs") },
+    )
+
+val buildRustAndroid by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Builds the Rust library for every supported Android ABI."
+    inputs.files(rustInputs)
+    outputs.dir(generatedJniLibraries)
+    workingDir(rustRoot)
+    doFirst {
+        generatedJniLibraries.get().asFile.deleteRecursively()
+    }
+    commandLine(
+        "cargo",
+        "ndk",
+        "--platform",
+        "24",
+        "--target",
+        "arm64-v8a",
+        "--target",
+        "armeabi-v7a",
+        "--target",
+        "x86_64",
+        "--target",
+        "x86",
+        "--output-dir",
+        generatedJniLibraries.get().asFile.absolutePath,
+        "build",
+        "--release",
+        "--locked",
+        "--lib",
+    )
+}
+
+val generateUniFfiBindings by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Generates Kotlin bindings from the Android Rust library."
+    dependsOn(buildRustAndroid)
+    inputs.file(bindingLibrary)
+    inputs.file(rustRoot.file("uniffi.toml"))
+    outputs.dir(generatedBindings)
+    workingDir(rustRoot)
+    doFirst {
+        generatedBindings.get().asFile.deleteRecursively()
+    }
+    commandLine(
+        "cargo",
+        "run",
+        "--locked",
+        "--bin",
+        "uniffi-bindgen",
+        "--",
+        "generate",
+        "--library",
+        bindingLibrary.get().asFile.absolutePath,
+        "--language",
+        "kotlin",
+        "--out-dir",
+        generatedBindings.get().asFile.absolutePath,
+        "--no-format",
+    )
+}
+
+android {
+    namespace = "ai.botisan.xlsxwriter"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 24
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        aidl = false
+        buildConfig = false
+        resValues = false
+    }
+
+    sourceSets.named("main") {
+        jniLibs.srcDir(generatedJniLibraries.get().asFile)
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.java?.addStaticSourceDirectory(generatedBindings.get().asFile.absolutePath)
+    }
+}
+
+ktlint {
+    version.set("1.8.0")
+    filter {
+        exclude("**/build/**")
+    }
+}
+
+dependencies {
+    implementation("androidx.annotation:annotation:1.9.1")
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
+
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+}
+
+tasks.named("preBuild") {
+    dependsOn(generateUniFfiBindings, buildRustAndroid)
+}

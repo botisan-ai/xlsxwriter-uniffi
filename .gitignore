@@ -20,5 +20,10 @@ Package.resolved
 *.xcworkspace/
 xcuserdata/
 
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/**/build/
+
 # Generated files (keep in repo after build)
 # Sources/XlsxWriterFFI/xlsxwriter.swift
