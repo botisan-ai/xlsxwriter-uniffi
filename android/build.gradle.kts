@@ -25,11 +25,13 @@ extra["xlsxWriterVersion"] = xlsxWriterVersion
 tasks.register<Exec>("verifyReleaseArtifacts") {
     group = "verification"
     description = "Verifies the published Maven module, native libraries, and consumer APK."
-    dependsOn(":consumer:assembleDebug", ":xlsxwriter-android:generateReleaseRepository")
+    dependsOn(":consumer:assembleDebug", ":xlsxwriter-android:generateReleaseChecksum")
     commandLine(
         layout.projectDirectory.file("verify-release-artifacts.sh").asFile.absolutePath,
         layout.buildDirectory.dir("repository").get().asFile.absolutePath,
         xlsxWriterVersion,
         layout.projectDirectory.file("consumer/build/outputs/apk/debug/consumer-debug.apk").asFile.absolutePath,
+        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion.zip").get().asFile.absolutePath,
+        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion.zip.sha256").get().asFile.absolutePath,
     )
 }

@@ -1,16 +1,16 @@
-# XlsxWriter for iOS/macOS
+# XlsxWriter for Swift and Kotlin
 
-A Swift wrapper for [rust_xlsxwriter](https://github.com/jmcnamara/rust_xlsxwriter), a high-performance Excel XLSX file writer written in Rust. Uses [UniFFI](https://github.com/mozilla/uniffi-rs) to generate Swift bindings.
+Swift and Kotlin/Android wrappers for [rust_xlsxwriter](https://github.com/jmcnamara/rust_xlsxwriter), a high-performance Excel XLSX file writer written in Rust. [UniFFI](https://github.com/mozilla/uniffi-rs) generates both language bindings from the same Rust core.
 
 ## Features
 
-- Create Excel 2007+ (.xlsx) files from iOS/macOS apps
+- Create Excel 2007+ (.xlsx) files from iOS, macOS, and Android apps
 - Write strings, numbers, booleans, dates, and datetimes to cells
 - Multiple worksheet support with custom naming
 - Column width and row height control
 - Save to file or in-memory buffer
-- Thread-safe with Swift `actor` isolation
-- Native Foundation `Date` support
+- Swift `actor` isolation and an Android `AutoCloseable` API
+- Native Foundation `Date` support on Swift and civil-date values on Android
 
 ## Installation
 
@@ -20,13 +20,46 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/example/XlsxWriter.swift.git", from: "0.1.0")
+    .package(url: "https://github.com/botisan-ai/XlsxWriter.swift.git", from: "0.1.3")
 ]
 ```
 
 Or add it via Xcode: File → Add Package Dependencies → Enter the repository URL.
 
-## Usage
+### Android
+
+Android releases are distributed as a zipped folder-based Maven repository. Download the `xlsxwriter-android-<version>.zip` asset and its `.sha256` sidecar from the matching GitHub Release, verify the checksum, then extract it into your project—for example, `third_party/xlsxwriter`.
+
+```sh
+cd <download-directory>
+shasum -a 256 -c xlsxwriter-android-0.2.0.zip.sha256
+```
+
+Point Gradle at the extracted repository:
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        maven {
+            url = uri(rootDir.resolve("third_party/xlsxwriter/xlsxwriter-android-0.2.0"))
+        }
+        google()
+        mavenCentral()
+    }
+}
+```
+
+Add the normal Maven coordinate. JNA is resolved transitively as an Android AAR:
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("ai.botisan:xlsxwriter-android:0.2.0")
+}
+```
+
+## Swift usage
 
 ### Basic Example
 
@@ -139,7 +172,28 @@ let data: Data = try await workbook.saveToBuffer()
 print("Generated \(data.count) bytes")
 ```
 
-## API Reference
+## Android usage
+
+The Kotlin façade uses ordinary `Int`, `Long`, `Double`, and `File` types. It hides the generated UniFFI API, unsigned indices, JNA, and native handles.
+
+```kotlin
+import ai.botisan.xlsxwriter.ExcelDate
+import ai.botisan.xlsxwriter.XlsxWorkbook
+
+XlsxWorkbook().use { workbook ->
+    val receipts = workbook.addWorksheet("Receipts")
+    workbook.writeString(receipts, row = 0, column = 0, value = "Merchant")
+    workbook.writeInteger(receipts, row = 1, column = 0, value = 1)
+    workbook.writeNumber(receipts, row = 1, column = 1, value = 12.34)
+    workbook.writeDate(receipts, row = 1, column = 2, value = ExcelDate(2026, 8, 3))
+    workbook.setColumnWidth(receipts, column = 0, width = 18.0)
+    workbook.save(outputFile)
+}
+```
+
+Calls are synchronous. Write larger workbooks on an IO dispatcher or another background thread. `save(File)` requires a writable filesystem path, so copy any `content://` destination through Android's content resolver separately.
+
+## Swift API Reference
 
 ### XlsxWorkbook
 
@@ -172,8 +226,10 @@ print("Generated \(data.count) bytes")
 
 ### Prerequisites
 
-- Rust toolchain with iOS targets
+- Rust stable with the targets listed in `rust-toolchain.toml`
 - Xcode with Swift 6.0+
+- JDK 17, Android SDK 36, and Android NDK 28.2+
+- `cargo-ndk` 4.1.2: `cargo install cargo-ndk --version 4.1.2 --locked`
 
 ### Building
 
@@ -186,6 +242,16 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin
 
 # Run tests
 swift test
+
+# Build, publish, and verify the Android release through a coordinate-only consumer
+./android/gradlew -p android verifyReleaseArtifacts ktlintCheck \
+  :xlsxwriter-android:lintRelease :consumer:lintDebug
+
+# Run the Kotlin/native round-trip on a connected emulator or device
+./android/gradlew -p android :xlsxwriter-android:connectedDebugAndroidTest
+
+# Produce the Maven repository ZIP and SHA-256 sidecar
+./android/gradlew -p android :xlsxwriter-android:generateReleaseChecksum
 ```
 
 ### Project Structure
@@ -200,12 +266,15 @@ XlsxWriter.swift/
 │   └── XlsxWriterSwift/    # Hand-written Swift wrapper
 ├── Tests/
 │   └── XlsxWriterSwiftTests/
+├── android/
+│   ├── xlsxwriter-android/ # Published Kotlin/AAR library
+│   └── consumer/           # Maven-coordinate consumer smoke build
 ├── build-ios.sh            # Build script
 ├── Cargo.toml              # Rust dependencies
 └── Package.swift           # Swift package manifest
 ```
 
-## Limitations (v0.1.0)
+## Limitations
 
 This initial version focuses on basic functionality. Not yet supported:
 
@@ -215,6 +284,7 @@ This initial version focuses on basic functionality. Not yet supported:
 - Images
 - Merged cells
 - Hyperlinks
+- Exact integers above 2^53; the shared Rust core currently writes integers through an XLSX number
 
 These features are available in the underlying [rust_xlsxwriter](https://docs.rs/rust_xlsxwriter) crate and may be exposed in future versions.
 

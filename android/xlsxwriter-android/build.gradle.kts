@@ -205,3 +205,13 @@ tasks.register<Zip>("generateReleaseRepository") {
     archiveFileName.set("xlsxwriter-android-${project.version}.zip")
     destinationDirectory.set(rootProject.layout.buildDirectory.dir("distributions"))
 }
+
+tasks.register<Exec>("generateReleaseChecksum") {
+    group = "publishing"
+    description = "Generates the SHA-256 sidecar for the Maven repository ZIP."
+    dependsOn("generateReleaseRepository")
+    val archive = rootProject.layout.buildDirectory.file("distributions/xlsxwriter-android-${project.version}.zip")
+    inputs.file(archive)
+    outputs.file(archive.map { file -> file.asFile.parentFile.resolve("${file.asFile.name}.sha256") })
+    commandLine(rootProject.file("checksum-release.sh").absolutePath, archive.get().asFile.absolutePath)
+}

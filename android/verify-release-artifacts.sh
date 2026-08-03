@@ -2,25 +2,39 @@
 
 set -euo pipefail
 
-if [[ "$#" -ne 3 ]]; then
-  echo "Usage: $0 <maven-repository> <version> <consumer-apk>" >&2
+if [[ "$#" -ne 5 ]]; then
+  echo "Usage: $0 <maven-repository> <version> <consumer-apk> <release-zip> <checksum>" >&2
   exit 2
 fi
 
 maven_repository="$1"
 version="$2"
 consumer_apk="$3"
+release_zip="$4"
+release_checksum="$5"
 module_directory="${maven_repository}/ai/botisan/xlsxwriter-android/${version}"
 aar="${module_directory}/xlsxwriter-android-${version}.aar"
 pom="${module_directory}/xlsxwriter-android-${version}.pom"
 module_metadata="${module_directory}/xlsxwriter-android-${version}.module"
 
-for artifact in "$aar" "$pom" "$module_metadata" "$consumer_apk"; do
+for artifact in "$aar" "$pom" "$module_metadata" "$consumer_apk" "$release_zip" "$release_checksum"; do
   if [[ ! -f "$artifact" ]]; then
     echo "Missing release artifact: $artifact" >&2
     exit 1
   fi
 done
+
+expected_checksum=$(awk '{ print $1 }' "$release_checksum")
+if command -v sha256sum >/dev/null 2>&1; then
+  actual_checksum=$(sha256sum "$release_zip" | awk '{ print $1 }')
+else
+  actual_checksum=$(shasum -a 256 "$release_zip" | awk '{ print $1 }')
+fi
+
+if [[ "$actual_checksum" != "$expected_checksum" ]]; then
+  echo "Release ZIP checksum does not match its sidecar" >&2
+  exit 1
+fi
 
 jna_dependency=$(awk '
   /<dependency>/ { block = "" }
@@ -98,6 +112,20 @@ for abi in "${abis[@]}"; do
   fi
 done
 
+mkdir -p "$temporary_directory/apk"
+unzip -q "$consumer_apk" -d "$temporary_directory/apk"
+for abi in arm64-v8a x86_64; do
+  for library_name in libxlsxwriter.so libjnidispatch.so; do
+    library="$temporary_directory/apk/lib/$abi/$library_name"
+    while read -r alignment; do
+      if (( alignment < 0x4000 )); then
+        echo "$abi/$library_name has PT_LOAD alignment $alignment" >&2
+        exit 1
+      fi
+    done < <("$readelf" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+  done
+done
+
 zipalign=""
 if [[ -n "${ANDROID_HOME:-}" ]]; then
   for candidate in "$ANDROID_HOME"/build-tools/*/zipalign; do
@@ -113,4 +141,4 @@ if [[ -z "$zipalign" ]]; then
 fi
 
 "$zipalign" -c -P 16 4 "$consumer_apk" >/dev/null
-echo "Verified Maven metadata, four ABIs, 16 KiB ELF alignment, and consumer APK alignment."
+echo "Verified Maven metadata, checksum, four ABIs, 16 KiB ELF alignment, and consumer APK alignment."
