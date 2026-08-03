@@ -1,3 +1,4 @@
+import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.tasks.Exec
 
 plugins {
@@ -7,13 +8,7 @@ plugins {
 }
 
 group = "ai.botisan"
-version =
-    rootProject
-        .file("../Cargo.toml")
-        .readLines()
-        .first { it.trimStart().startsWith("version =") }
-        .substringAfter('"')
-        .substringBefore('"')
+version = rootProject.extra["xlsxWriterVersion"] as String
 
 val rustRoot = rootProject.layout.projectDirectory.dir("..")
 val generatedBindings = layout.buildDirectory.dir("generated/source/uniffi")
@@ -112,6 +107,12 @@ android {
     sourceSets.named("main") {
         jniLibs.srcDir(generatedJniLibraries.get().asFile)
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
 }
 
 kotlin {
@@ -142,4 +143,65 @@ dependencies {
 
 tasks.named("preBuild") {
     dependsOn(generateUniFfiBindings, buildRustAndroid)
+}
+
+tasks.matching { it.name.endsWith("SourcesJar") }.configureEach {
+    dependsOn(generateUniFfiBindings)
+}
+
+tasks.matching { it.name == "publishReleasePublicationToReleaseRepository" }.configureEach {
+    doFirst {
+        rootProject.layout.buildDirectory
+            .dir("repository")
+            .get()
+            .asFile
+            .deleteRecursively()
+    }
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            register<MavenPublication>("release") {
+                from(components["release"])
+                groupId = project.group.toString()
+                artifactId = "xlsxwriter-android"
+                version = project.version.toString()
+
+                pom {
+                    name.set("XlsxWriter Android")
+                    description.set("Kotlin and UniFFI bindings for the Rust xlsxwriter core.")
+                    url.set("https://github.com/botisan-ai/XlsxWriter.swift")
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://opensource.org/licenses/MIT")
+                        }
+                    }
+                    scm {
+                        connection.set("scm:git:git://github.com/botisan-ai/XlsxWriter.swift.git")
+                        developerConnection.set("scm:git:ssh://github.com/botisan-ai/XlsxWriter.swift.git")
+                        url.set("https://github.com/botisan-ai/XlsxWriter.swift")
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                name = "release"
+                url = uri(rootProject.layout.buildDirectory.dir("repository"))
+            }
+        }
+    }
+}
+
+tasks.register<Zip>("generateReleaseRepository") {
+    group = "publishing"
+    description = "Publishes and zips the Maven repository for a GitHub Release."
+    dependsOn("publishReleasePublicationToReleaseRepository")
+    from(rootProject.layout.buildDirectory.dir("repository"))
+    into("xlsxwriter-android-${project.version}")
+    archiveFileName.set("xlsxwriter-android-${project.version}.zip")
+    destinationDirectory.set(rootProject.layout.buildDirectory.dir("distributions"))
 }
