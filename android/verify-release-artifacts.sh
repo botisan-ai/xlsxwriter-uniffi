@@ -2,18 +2,19 @@
 
 set -euo pipefail
 
-if [[ "$#" -ne 7 ]]; then
-  echo "Usage: $0 <maven-repository> <version> <consumer-apk> <release-zip> <zip-checksum> <release-aar> <aar-checksum>" >&2
+if [[ "$#" -ne 4 ]]; then
+  echo "Usage: $0 <maven-repository> <version> <consumer-apk> <distribution-directory>" >&2
   exit 2
 fi
 
 maven_repository="$1"
 version="$2"
 consumer_apk="$3"
-release_zip="$4"
-release_zip_checksum="$5"
-release_aar="$6"
-release_aar_checksum="$7"
+distribution_directory="$4"
+release_zip="${distribution_directory}/xlsxwriter-android-${version}-maven.zip"
+release_zip_checksum="${release_zip}.sha256"
+release_aar="${distribution_directory}/xlsxwriter-android-${version}.aar"
+release_aar_checksum="${release_aar}.sha256"
 module_directory="${maven_repository}/ai/botisan/xlsxwriter-android/${version}"
 aar="${module_directory}/xlsxwriter-android-${version}.aar"
 pom="${module_directory}/xlsxwriter-android-${version}.pom"
@@ -114,14 +115,28 @@ if [[ -z "$readelf" ]]; then
   exit 1
 fi
 
-for abi in "${abis[@]}"; do
-  library="$temporary_directory/aar/jni/$abi/libxlsxwriter.so"
+verify_elf_alignment() {
+  local label="$1"
+  local library="$2"
+  local has_load_segment=false
+
   while read -r alignment; do
+    has_load_segment=true
     if (( alignment < 0x4000 )); then
-      echo "$abi/libxlsxwriter.so has PT_LOAD alignment $alignment" >&2
+      echo "$label has PT_LOAD alignment $alignment" >&2
       exit 1
     fi
   done < <("$readelf" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+
+  if [[ "$has_load_segment" == false ]]; then
+    echo "$label has no PT_LOAD segments" >&2
+    exit 1
+  fi
+}
+
+for abi in "${abis[@]}"; do
+  library="$temporary_directory/aar/jni/$abi/libxlsxwriter.so"
+  verify_elf_alignment "$abi/libxlsxwriter.so" "$library"
 done
 
 unzip -Z1 "$consumer_apk" > "$temporary_directory/apk-entries.txt"
@@ -147,12 +162,7 @@ unzip -q "$consumer_apk" -d "$temporary_directory/apk"
 for abi in "${abis[@]}"; do
   for library_name in libxlsxwriter.so libjnidispatch.so; do
     library="$temporary_directory/apk/lib/$abi/$library_name"
-    while read -r alignment; do
-      if (( alignment < 0x4000 )); then
-        echo "$abi/$library_name has PT_LOAD alignment $alignment" >&2
-        exit 1
-      fi
-    done < <("$readelf" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+    verify_elf_alignment "$abi/$library_name" "$library"
   done
 done
 

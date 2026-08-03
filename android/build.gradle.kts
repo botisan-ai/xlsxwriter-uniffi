@@ -31,9 +31,6 @@ tasks.register<Exec>("verifyReleaseArtifacts") {
         layout.buildDirectory.dir("repository").get().asFile.absolutePath,
         xlsxWriterVersion,
         layout.projectDirectory.file("consumer/build/outputs/apk/debug/consumer-debug.apk").asFile.absolutePath,
-        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion-maven.zip").get().asFile.absolutePath,
-        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion-maven.zip.sha256").get().asFile.absolutePath,
-        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion.aar").get().asFile.absolutePath,
-        layout.buildDirectory.file("distributions/xlsxwriter-android-$xlsxWriterVersion.aar.sha256").get().asFile.absolutePath,
+        layout.buildDirectory.dir("distributions").get().asFile.absolutePath,
     )
 }
